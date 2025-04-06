@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -10,32 +10,64 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, UserPreference } from "@shared/schema";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  UserCircle,
+  MapPin,
+  Package,
+  Heart,
+  CreditCard,
+  LogOut,
+  Shield,
+  Bell,
+} from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserCircle, MapPin, Package, Heart, CreditCard, LogOut, Shield, Bell } from "lucide-react";
 
+// Updated schema to match the API response structure
 const profileSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address").min(1, "Email is required"),
   location: z.string().optional(),
+  username: z.string().optional(),
+  age: z.number().optional().nullable(),
+  gender: z.string().optional().nullable(),
+  customerSegment: z.string().optional().nullable(),
 });
 
-const passwordSchema = z.object({
-  currentPassword: z.string().min(6, "Current password is required"),
-  newPassword: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[0-9]/, "Password must contain at least one number")
-    .regex(/[^a-zA-Z0-9]/, "Password must contain at least one special character"),
-  confirmPassword: z.string().min(8, "Please confirm your password"),
-}).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
+const passwordSchema = z
+  .object({
+    currentPassword: z.string().min(6, "Current password is required"),
+    newPassword: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(/[0-9]/, "Password must contain at least one number")
+      .regex(
+        /[^a-zA-Z0-9]/,
+        "Password must contain at least one special character"
+      ),
+    confirmPassword: z.string().min(8, "Please confirm your password"),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 type PasswordFormValues = z.infer<typeof passwordSchema>;
@@ -44,14 +76,31 @@ export default function Account() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState("profile");
-  
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Check if user is logged in
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await apiRequest("GET", "/api/user/profile");
+        if (response) {
+          setIsLoggedIn(true);
+        }
+      } catch (error) {
+        navigate("/login");
+      }
+    };
+
+    checkAuth();
+  }, [navigate]);
+
   // Fetch user profile
-  const { 
-    data: user, 
-    isLoading: isLoadingUser, 
-    error: userError 
-  } = useQuery<User>({
-    queryKey: ['/api/user/profile'],
+  const {
+    data: user,
+    isLoading: isLoadingUser,
+    error: userError,
+  } = useQuery({
+    queryKey: ["/api/user/profile"],
     onError: () => {
       // Redirect to login if not authenticated
       toast({
@@ -59,35 +108,38 @@ export default function Account() {
         description: "Please log in to view your account",
         variant: "destructive",
       });
-      navigate("/");
-    }
+      navigate("/login");
+    },
+    enabled: isLoggedIn,
   });
-  
-  // Fetch user preferences
-  const { 
-    data: preferences
-  } = useQuery<UserPreference>({
-    queryKey: ['/api/user/preferences'],
-    enabled: !!user,
-  });
-  
+
   // Profile form
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      firstName: user?.firstName || "",
-      lastName: user?.lastName || "",
-      email: user?.email || "",
-      location: user?.location || "",
+      firstName: "",
+      lastName: "",
+      email: "",
+      location: "",
+      username: "",
+      age: null,
+      gender: null,
+      customerSegment: null,
     },
-    values: {
-      firstName: user?.firstName || "",
-      lastName: user?.lastName || "",
-      email: user?.email || "",
-      location: user?.location || "",
-    }
+    values: user
+      ? {
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          email: user.email || "",
+          location: user.location || "",
+          username: user.username || "",
+          age: user.age || null,
+          gender: user.gender || null,
+          customerSegment: user.customerSegment || null,
+        }
+      : undefined,
   });
-  
+
   // Password form
   const passwordForm = useForm<PasswordFormValues>({
     resolver: zodResolver(passwordSchema),
@@ -97,7 +149,7 @@ export default function Account() {
       confirmPassword: "",
     },
   });
-  
+
   // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (data: ProfileFormValues) => {
@@ -108,7 +160,7 @@ export default function Account() {
         title: "Profile updated",
         description: "Your profile has been updated successfully",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
     },
     onError: () => {
       toast({
@@ -116,9 +168,9 @@ export default function Account() {
         description: "Failed to update your profile. Please try again.",
         variant: "destructive",
       });
-    }
+    },
   });
-  
+
   // Change password mutation
   const changePasswordMutation = useMutation({
     mutationFn: async (data: PasswordFormValues) => {
@@ -137,22 +189,28 @@ export default function Account() {
     onError: () => {
       toast({
         title: "Update failed",
-        description: "Failed to change your password. Please ensure your current password is correct.",
+        description:
+          "Failed to change your password. Please ensure your current password is correct.",
         variant: "destructive",
       });
-    }
+    },
   });
-  
+
+  const { data: orders, isLoading: isLoadingOrders } = useQuery({
+    queryKey: ["/api/user/orders"],
+    enabled: isLoggedIn,
+  });
+
   // Handle profile form submission
   const onProfileSubmit = (data: ProfileFormValues) => {
     updateProfileMutation.mutate(data);
   };
-  
+
   // Handle password form submission
   const onPasswordSubmit = (data: PasswordFormValues) => {
     changePasswordMutation.mutate(data);
   };
-  
+
   // Handle logout
   const handleLogout = async () => {
     try {
@@ -161,7 +219,7 @@ export default function Account() {
         title: "Logged out",
         description: "You have been logged out successfully",
       });
-      navigate("/");
+      navigate("/login");
     } catch (error) {
       toast({
         title: "Logout failed",
@@ -170,18 +228,22 @@ export default function Account() {
       });
     }
   };
-  
+
   if (userError) {
     return null; // Will redirect in the onError callback
   }
-  
+
+  if (!isLoggedIn) {
+    return null; // Don't render anything until auth check is complete
+  }
+
   return (
     <div className="pt-32 md:pt-36 pb-24 bg-background">
       <div className="container mx-auto px-6">
         <h1 className="font-poppins text-2xl md:text-3xl font-semibold text-primary mb-8">
           My Account
         </h1>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Sidebar */}
           <div className="md:col-span-1">
@@ -211,9 +273,9 @@ export default function Account() {
               <CardContent className="pt-0">
                 <ul className="space-y-1 -ml-2">
                   <li>
-                    <Button 
-                      variant={activeTab === "profile" ? "secondary" : "ghost"} 
-                      className="w-full justify-start" 
+                    <Button
+                      variant={activeTab === "profile" ? "secondary" : "ghost"}
+                      className="w-full justify-start"
                       onClick={() => setActiveTab("profile")}
                     >
                       <UserCircle className="mr-2 h-4 w-4" />
@@ -221,9 +283,9 @@ export default function Account() {
                     </Button>
                   </li>
                   <li>
-                    <Button 
-                      variant={activeTab === "orders" ? "secondary" : "ghost"} 
-                      className="w-full justify-start" 
+                    <Button
+                      variant={activeTab === "orders" ? "secondary" : "ghost"}
+                      className="w-full justify-start"
                       onClick={() => setActiveTab("orders")}
                     >
                       <Package className="mr-2 h-4 w-4" />
@@ -231,9 +293,11 @@ export default function Account() {
                     </Button>
                   </li>
                   <li>
-                    <Button 
-                      variant={activeTab === "addresses" ? "secondary" : "ghost"} 
-                      className="w-full justify-start" 
+                    <Button
+                      variant={
+                        activeTab === "addresses" ? "secondary" : "ghost"
+                      }
+                      className="w-full justify-start"
                       onClick={() => setActiveTab("addresses")}
                     >
                       <MapPin className="mr-2 h-4 w-4" />
@@ -241,9 +305,9 @@ export default function Account() {
                     </Button>
                   </li>
                   <li>
-                    <Button 
-                      variant={activeTab === "wishlist" ? "secondary" : "ghost"} 
-                      className="w-full justify-start" 
+                    <Button
+                      variant={activeTab === "wishlist" ? "secondary" : "ghost"}
+                      className="w-full justify-start"
                       onClick={() => setActiveTab("wishlist")}
                     >
                       <Heart className="mr-2 h-4 w-4" />
@@ -251,9 +315,9 @@ export default function Account() {
                     </Button>
                   </li>
                   <li>
-                    <Button 
-                      variant={activeTab === "payment" ? "secondary" : "ghost"} 
-                      className="w-full justify-start" 
+                    <Button
+                      variant={activeTab === "payment" ? "secondary" : "ghost"}
+                      className="w-full justify-start"
                       onClick={() => setActiveTab("payment")}
                     >
                       <CreditCard className="mr-2 h-4 w-4" />
@@ -261,19 +325,9 @@ export default function Account() {
                     </Button>
                   </li>
                   <li>
-                    <Button 
-                      variant={activeTab === "preferences" ? "secondary" : "ghost"} 
-                      className="w-full justify-start" 
-                      onClick={() => setActiveTab("preferences")}
-                    >
-                      <Bell className="mr-2 h-4 w-4" />
-                      Preferences
-                    </Button>
-                  </li>
-                  <li>
-                    <Button 
-                      variant={activeTab === "security" ? "secondary" : "ghost"} 
-                      className="w-full justify-start" 
+                    <Button
+                      variant={activeTab === "security" ? "secondary" : "ghost"}
+                      className="w-full justify-start"
                       onClick={() => setActiveTab("security")}
                     >
                       <Shield className="mr-2 h-4 w-4" />
@@ -281,11 +335,11 @@ export default function Account() {
                     </Button>
                   </li>
                 </ul>
-                
+
                 <Separator className="my-4" />
-                
-                <Button 
-                  variant="ghost" 
+
+                <Button
+                  variant="ghost"
                   className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
                   onClick={handleLogout}
                 >
@@ -295,7 +349,7 @@ export default function Account() {
               </CardContent>
             </Card>
           </div>
-          
+
           {/* Main Content */}
           <div className="md:col-span-3">
             {activeTab === "profile" && (
@@ -319,7 +373,10 @@ export default function Account() {
                     </div>
                   ) : (
                     <Form {...profileForm}>
-                      <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-4">
+                      <form
+                        onSubmit={profileForm.handleSubmit(onProfileSubmit)}
+                        className="space-y-4"
+                      >
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <FormField
                             control={profileForm.control}
@@ -334,7 +391,7 @@ export default function Account() {
                               </FormItem>
                             )}
                           />
-                          
+
                           <FormField
                             control={profileForm.control}
                             name="lastName"
@@ -349,7 +406,21 @@ export default function Account() {
                             )}
                           />
                         </div>
-                        
+
+                        <FormField
+                          control={profileForm.control}
+                          name="username"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Username</FormLabel>
+                              <FormControl>
+                                <Input {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
                         <FormField
                           control={profileForm.control}
                           name="email"
@@ -363,7 +434,7 @@ export default function Account() {
                             </FormItem>
                           )}
                         />
-                        
+
                         <FormField
                           control={profileForm.control}
                           name="location"
@@ -377,12 +448,55 @@ export default function Account() {
                             </FormItem>
                           )}
                         />
-                        
-                        <Button 
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <FormField
+                            control={profileForm.control}
+                            name="age"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Age</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    {...field}
+                                    value={field.value || ""}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        e.target.value
+                                          ? parseInt(e.target.value)
+                                          : null
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={profileForm.control}
+                            name="gender"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Gender</FormLabel>
+                                <FormControl>
+                                  <Input {...field} value={field.value || ""} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <Button
                           type="submit"
                           disabled={updateProfileMutation.isPending}
                         >
-                          {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
+                          {updateProfileMutation.isPending
+                            ? "Saving..."
+                            : "Save Changes"}
                         </Button>
                       </form>
                     </Form>
@@ -390,7 +504,7 @@ export default function Account() {
                 </CardContent>
               </Card>
             )}
-            
+
             {activeTab === "security" && (
               <Card>
                 <CardHeader>
@@ -402,13 +516,20 @@ export default function Account() {
                 <CardContent>
                   <Tabs defaultValue="password">
                     <TabsList className="mb-4">
-                      <TabsTrigger value="password">Change Password</TabsTrigger>
-                      <TabsTrigger value="2fa">Two-Factor Authentication</TabsTrigger>
+                      <TabsTrigger value="password">
+                        Change Password
+                      </TabsTrigger>
+                      <TabsTrigger value="2fa">
+                        Two-Factor Authentication
+                      </TabsTrigger>
                     </TabsList>
-                    
+
                     <TabsContent value="password">
                       <Form {...passwordForm}>
-                        <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
+                        <form
+                          onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
+                          className="space-y-4"
+                        >
                           <FormField
                             control={passwordForm.control}
                             name="currentPassword"
@@ -422,7 +543,7 @@ export default function Account() {
                               </FormItem>
                             )}
                           />
-                          
+
                           <FormField
                             control={passwordForm.control}
                             name="newPassword"
@@ -436,7 +557,7 @@ export default function Account() {
                               </FormItem>
                             )}
                           />
-                          
+
                           <FormField
                             control={passwordForm.control}
                             name="confirmPassword"
@@ -450,34 +571,40 @@ export default function Account() {
                               </FormItem>
                             )}
                           />
-                          
-                          <Button 
+
+                          <Button
                             type="submit"
                             disabled={changePasswordMutation.isPending}
                           >
-                            {changePasswordMutation.isPending ? "Changing..." : "Change Password"}
+                            {changePasswordMutation.isPending
+                              ? "Changing..."
+                              : "Change Password"}
                           </Button>
                         </form>
                       </Form>
                     </TabsContent>
-                    
+
                     <TabsContent value="2fa">
                       <div className="space-y-4">
                         <p className="text-sm text-gray-600">
-                          Two-factor authentication adds an extra layer of security to your account. 
-                          In addition to your password, you'll need to enter a code from your phone.
+                          Two-factor authentication adds an extra layer of
+                          security to your account. In addition to your
+                          password, you'll need to enter a code from your phone.
                         </p>
-                        
+
                         <div className="flex items-start space-x-3 pt-4">
                           <Checkbox id="enable2fa" />
                           <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="enable2fa">Enable two-factor authentication</Label>
+                            <Label htmlFor="enable2fa">
+                              Enable two-factor authentication
+                            </Label>
                             <p className="text-sm text-gray-500">
-                              You will need to set up an authenticator app on your phone.
+                              You will need to set up an authenticator app on
+                              your phone.
                             </p>
                           </div>
                         </div>
-                        
+
                         <Button variant="outline" className="mt-4">
                           Set Up Two-Factor Authentication
                         </Button>
@@ -487,150 +614,89 @@ export default function Account() {
                 </CardContent>
               </Card>
             )}
-            
-            {activeTab === "preferences" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Preferences</CardTitle>
-                  <CardDescription>
-                    Manage your shopping preferences and notification settings
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-lg font-medium mb-3">Shopping Preferences</h3>
-                      <div className="space-y-3">
-                        <div className="flex items-start space-x-3">
-                          <Checkbox 
-                            id="pref-women" 
-                            checked={preferences?.preferredCategories?.includes("women") || false} 
-                          />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="pref-women">Women's Fashion</Label>
-                            <p className="text-sm text-gray-500">
-                              Get recommendations for women's clothing and accessories
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start space-x-3">
-                          <Checkbox 
-                            id="pref-men" 
-                            checked={preferences?.preferredCategories?.includes("men") || false} 
-                          />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="pref-men">Men's Fashion</Label>
-                            <p className="text-sm text-gray-500">
-                              Get recommendations for men's clothing and accessories
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start space-x-3">
-                          <Checkbox 
-                            id="pref-accessories" 
-                            checked={preferences?.preferredCategories?.includes("accessories") || false} 
-                          />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="pref-accessories">Accessories</Label>
-                            <p className="text-sm text-gray-500">
-                              Get recommendations for watches, jewelry, and other accessories
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start space-x-3">
-                          <Checkbox 
-                            id="pref-home" 
-                            checked={preferences?.preferredCategories?.includes("home-goods") || false} 
-                          />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="pref-home">Home Goods</Label>
-                            <p className="text-sm text-gray-500">
-                              Get recommendations for home decor and household items
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <Separator />
-                    
-                    <div>
-                      <h3 className="text-lg font-medium mb-3">Notification Preferences</h3>
-                      <div className="space-y-3">
-                        <div className="flex items-start space-x-3">
-                          <Checkbox id="notifications-email" defaultChecked />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="notifications-email">Email Notifications</Label>
-                            <p className="text-sm text-gray-500">
-                              Receive order updates and promotional offers via email
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start space-x-3">
-                          <Checkbox id="notifications-orders" defaultChecked />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="notifications-orders">Order Updates</Label>
-                            <p className="text-sm text-gray-500">
-                              Receive notifications about your order status
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start space-x-3">
-                          <Checkbox id="notifications-promotions" defaultChecked />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="notifications-promotions">Promotions and Offers</Label>
-                            <p className="text-sm text-gray-500">
-                              Receive notifications about sales, discounts, and special offers
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start space-x-3">
-                          <Checkbox id="notifications-recommendations" defaultChecked />
-                          <div className="grid gap-1.5 leading-none">
-                            <Label htmlFor="notifications-recommendations">Product Recommendations</Label>
-                            <p className="text-sm text-gray-500">
-                              Receive personalized product recommendations based on your preferences
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <Button>Save Preferences</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            
+
             {activeTab === "orders" && (
               <Card>
                 <CardHeader>
                   <CardTitle>Order History</CardTitle>
-                  <CardDescription>
-                    View and track your orders
-                  </CardDescription>
+                  <CardDescription>View and track your orders</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-8">
-                    <Package className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-700 mb-2">No orders yet</h3>
-                    <p className="text-gray-500 mb-6">
-                      You haven't placed any orders yet. Start shopping to see your orders here.
-                    </p>
-                    <Button asChild>
-                      <a href="/products">Browse Products</a>
-                    </Button>
-                  </div>
+                  {isLoadingOrders ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-24 w-full" />
+                      ))}
+                    </div>
+                  ) : orders?.length ? (
+                    <div className="space-y-4">
+                      {orders.map((order) => (
+                        <div
+                          key={order.id}
+                          className="border rounded-lg p-4 space-y-3"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-medium">Order #{order.id}</h4>
+                              <p className="text-sm text-gray-500">
+                                {new Date(
+                                  order.purchase_date
+                                ).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <p className="font-medium">
+                              ${order.total_amount.toFixed(2)}
+                            </p>
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-2">
+                            {order.items.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex justify-between items-center text-sm"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <span>{item.product_name}</span>
+                                  <span className="text-gray-500">
+                                    × {item.quantity}
+                                  </span>
+                                </div>
+                                <span>
+                                  ${item.price_at_purchase.toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex justify-end pt-2">
+                            <Button variant="outline" size="sm">
+                              View Details
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Package className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-700 mb-2">
+                        No orders yet
+                      </h3>
+                      <p className="text-gray-500 mb-6">
+                        You haven't placed any orders yet. Start shopping to see
+                        your orders here.
+                      </p>
+                      <Button asChild>
+                        <a href="/products">Browse Products</a>
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
-            
+
             {activeTab === "wishlist" && (
               <Card>
                 <CardHeader>
@@ -642,9 +708,12 @@ export default function Account() {
                 <CardContent>
                   <div className="text-center py-8">
                     <Heart className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-700 mb-2">Your wishlist is empty</h3>
+                    <h3 className="text-lg font-medium text-gray-700 mb-2">
+                      Your wishlist is empty
+                    </h3>
                     <p className="text-gray-500 mb-6">
-                      Add items to your wishlist while browsing our store to save them for later.
+                      Add items to your wishlist while browsing our store to
+                      save them for later.
                     </p>
                     <Button asChild>
                       <a href="/products">Browse Products</a>
@@ -653,7 +722,7 @@ export default function Account() {
                 </CardContent>
               </Card>
             )}
-            
+
             {activeTab === "addresses" && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -668,15 +737,18 @@ export default function Account() {
                 <CardContent>
                   <div className="text-center py-8">
                     <MapPin className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-700 mb-2">No addresses saved</h3>
+                    <h3 className="text-lg font-medium text-gray-700 mb-2">
+                      No addresses saved
+                    </h3>
                     <p className="text-gray-500 mb-6">
-                      You haven't saved any addresses yet. Add your first address to speed up checkout.
+                      You haven't saved any addresses yet. Add your first
+                      address to speed up checkout.
                     </p>
                   </div>
                 </CardContent>
               </Card>
             )}
-            
+
             {activeTab === "payment" && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -691,9 +763,12 @@ export default function Account() {
                 <CardContent>
                   <div className="text-center py-8">
                     <CreditCard className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-700 mb-2">No payment methods saved</h3>
+                    <h3 className="text-lg font-medium text-gray-700 mb-2">
+                      No payment methods saved
+                    </h3>
                     <p className="text-gray-500 mb-6">
-                      You haven't saved any payment methods yet. Add a payment method to speed up checkout.
+                      You haven't saved any payment methods yet. Add a payment
+                      method to speed up checkout.
                     </p>
                   </div>
                 </CardContent>

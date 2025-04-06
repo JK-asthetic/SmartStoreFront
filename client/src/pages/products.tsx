@@ -35,7 +35,7 @@ export default function Products() {
   const [location] = useLocation();
   const { toast } = useToast();
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
   const [sortBy, setSortBy] = useState<string>("featured");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [gridView, setGridView] = useState<"grid" | "compact">("grid");

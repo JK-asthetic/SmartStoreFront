@@ -30,15 +30,7 @@ app.use(session({
   }
 }));
 
-// Add a demo user to the session for testing purposes
-app.use((req, res, next) => {
-  // For demo purposes, we'll set a default user ID (1) in the session
-  // In a real app, this would come from login
-  if (!req.session.userId) {
-    req.session.userId = 1; // This corresponds to our demo user
-  }
-  next();
-});
+
 
 app.use((req, res, next) => {
   const start = Date.now();

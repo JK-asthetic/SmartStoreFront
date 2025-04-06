@@ -1,235 +1,414 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { MessageSquare, X, Send } from "lucide-react";
-import { Ollama } from "ollama";
+import { Card } from "@/components/ui/card";
+import {
+  MessageCircle,
+  X,
+  Send,
+  ShoppingBag,
+  Truck,
+  HelpCircle,
+  Package,
+  ChevronRight,
+} from "lucide-react";
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+// import { useToast } from '@/components/ui/use-toast';
 
-interface Message {
-  text: string;
-  isUser: boolean;
+type Message = {
+  type: "user" | "ai";
+  content: string;
   timestamp: Date;
-  isStreaming?: boolean;
-}
+  agentType?: string;
+  products?: any[];
+  orders?: any[];
+  suggestedActions?: string[];
+};
 
-export default function ChatWidget() {
+const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      text: "Hello! I'm Gemma, how can I help you today?",
-      isUser: false,
-      timestamp: new Date(),
-    },
-  ]);
-  const [newMessage, setNewMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const ollamaClient = useRef<Ollama | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [location, navigate] = useLocation();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  // const { toast } = useToast();
 
-  // Initialize Ollama client
+  // Auto-scroll to bottom of chat when new messages arrive
   useEffect(() => {
-    // Create Ollama client - connect to localhost
-    ollamaClient.current = new Ollama({
-      host: "http://localhost:11434",
-    });
-    
-    return () => {
-      // Cleanup if needed
-      ollamaClient.current = null;
-    };
-  }, []);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Focus input when chat opens
+  useEffect(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+    }
+  }, [isOpen]);
+  const userId = isAuthenticated && user?.id 
+        ? user.id.toString() 
+        : localStorage.getItem('userId') || 'anonymous';
+
+  // Initialize with a welcome message
+  useEffect(() => {
+    if (messages.length === 0) {
+      setMessages([
+        {
+          type: "ai",
+          content:
+            "'Hello! I'm your shopping assistant. How can I help you today?'",
+          timestamp: new Date(),
+          suggestedActions: [
+            "Browse popular products",
+            "Check my order status",
+            "Help with returns",
+          ],
+        },
+      ]);
+    }
+  }, [messages.length]);
 
   const toggleChat = () => {
     setIsOpen(!isOpen);
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!newMessage.trim() || isLoading || !ollamaClient.current) return;
-    
-    // Add user message
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+  
+    if (!input.trim()) return;
+  
+    // Add user message to chat
     const userMessage: Message = {
-      text: newMessage,
-      isUser: true,
+      type: "user",
+      content: input,
       timestamp: new Date(),
     };
-    
+  
     setMessages((prev) => [...prev, userMessage]);
-    setNewMessage("");
-    setIsLoading(true);
-    
+    setInput("");
+    setLoading(true);
+  
     try {
-      // Convert messages to Ollama format
-      const ollamaMessages = messages.map(msg => ({
-        role: msg.isUser ? 'user' : 'assistant',
-        content: msg.text
-      }));
-      
-      // Add a placeholder for the streaming response
-      const botResponseId = Date.now();
-      setMessages((prev) => [
-        ...prev, 
-        { 
-          text: "", 
-          isUser: false, 
-          timestamp: new Date(), 
-          isStreaming: true 
-        }
-      ]);
-      
-      // Stream response from Ollama
-      const stream = await ollamaClient.current.chat({
-        model: 'gemma:2b',
-        messages: [
-          ...ollamaMessages,
-          { role: 'user', content: newMessage }
-        ],
-        stream: true,
+      // Send message to backend
+      const response = await fetch("http://localhost:3000/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: userId, // Use stored user ID or anonymous
+          message: input,
+        }),
       });
-      
-      let responseText = "";
-      
-      for await (const chunk of stream) {
-        responseText += chunk.message.content;
-        
-        // Update the streaming message with new content
-        setMessages((prev) => {
-          const updatedMessages = [...prev];
-          const lastMessageIndex = updatedMessages.length - 1;
-          
-          if (updatedMessages[lastMessageIndex].isStreaming) {
-            updatedMessages[lastMessageIndex] = {
-              ...updatedMessages[lastMessageIndex],
-              text: responseText,
-            };
-          }
-          
-          return updatedMessages;
-        });
-      }
-      
-      // Mark streaming as complete
-      setMessages((prev) => {
-        const updatedMessages = [...prev];
-        const lastMessageIndex = updatedMessages.length - 1;
-        
-        if (updatedMessages[lastMessageIndex].isStreaming) {
-          updatedMessages[lastMessageIndex] = {
-            ...updatedMessages[lastMessageIndex],
-            isStreaming: false,
-          };
-        }
-        
-        return updatedMessages;
-      });
-      
-    } catch (error) {
-      console.error('Error calling Ollama:', error);
-      
-      const errorMessage: Message = {
-        text: "Sorry, there was an error connecting to the AI model. Please try again later.",
-        isUser: false,
+  
+      const data = await response.json();
+  
+      // Add AI response to chat
+      const aiMessage: Message = {
+        type: "ai",
+        content: data.message,
         timestamp: new Date(),
+        agentType: data.agent_type,
+        products: data.products,
+        orders: data.orders,
+        suggestedActions: data.suggested_actions,
       };
-      
-      setMessages((prev) => {
-        // Replace streaming message with error if it exists
-        if (prev[prev.length - 1].isStreaming) {
-          return [...prev.slice(0, -1), errorMessage];
-        }
-        return [...prev, errorMessage];
-      });
+  
+      setMessages((prev) => [...prev, aiMessage]);
+  
+      // Handle filter commands and navigation
+      if (data.filter_command && data.should_navigate) {
+        // Close chat widget
+        setIsOpen(false);
+        
+        // Navigate to products page
+        navigate('/products');
+        
+        // Small delay to ensure navigation completes before applying filters
+        setTimeout(() => {
+          // Call the global applyAIFilters function
+          if (window.applyAIFilters) {
+            window.applyAIFilters(data.filter_command);
+          }
+        }, 500);
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      // Add error message
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: "ai",
+          content: "Sorry, I encountered an error. Please try again later.",
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const handleActionClick = (action: string) => {
+    setInput(action);
+    inputRef.current?.focus();
+  };
+
+  const handleProductClick = (productId: string, productSlug: string) => {
+    navigate(`/products/${productSlug}`);
+    setIsOpen(false);
+
+    // toast({
+    //   title: "Navigating to product",
+    //   description: "Opening product details page"
+    // });
+  };
+
+  const handleOrderClick = (orderId: string) => {
+    navigate(`/account?tab=orders&order=${orderId}`);
+    setIsOpen(false);
+    
+    // toast({
+    //   title: "Viewing Order Details",
+    //   description: `Opening order #${orderId} in your account`
+    // });
+  };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const getAgentIcon = (agentType?: string) => {
+    switch (agentType) {
+      case "product_recommendation":
+        return <ShoppingBag className="h-4 w-4 mr-1" />;
+      case "order_tracking":
+        return <Truck className="h-4 w-4 mr-1" />;
+      case "customer_support":
+        return <HelpCircle className="h-4 w-4 mr-1" />;
+      default:
+        return <MessageCircle className="h-4 w-4 mr-1" />;
+    }
+  };
+
+  // Function to get status color for order badges
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case "processing":
+        return "bg-yellow-100 text-yellow-800";
+      case "shipped":
+        return "bg-blue-100 text-blue-800";
+      case "delivered":
+        return "bg-green-100 text-green-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <>
+      {/* Chat toggle button */}
       <Button
+        className="fixed bottom-4 right-4 rounded-full w-12 h-12 p-0 shadow-lg"
         onClick={toggleChat}
-        className="bg-secondary hover:bg-secondary/90 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white transition-all focus:outline-none"
       >
-        {isOpen ? <X size={24} /> : <MessageSquare size={24} />}
+        {isOpen ? (
+          <X className="h-6 w-6" />
+        ) : (
+          <MessageCircle className="h-6 w-6" />
+        )}
       </Button>
-      
+
+      {/* Chat widget */}
       {isOpen && (
-        <div className="absolute bottom-16 right-0 w-72 md:w-96 bg-white rounded-lg shadow-xl overflow-hidden">
-          <div className="bg-primary p-4 flex justify-between items-center">
-            <h3 className="text-white font-medium">Gemma AI Assistant</h3>
-            <Button 
-              variant="ghost" 
-              onClick={toggleChat} 
-              className="text-white hover:text-secondary p-0 h-auto"
+        <Card className="fixed bottom-20 right-4 w-80 sm:w-96 h-96 flex flex-col shadow-xl rounded-lg overflow-hidden">
+          {/* Chat header */}
+          <div className="bg-primary text-primary-foreground p-3 flex justify-between items-center">
+            <div className="font-medium">Shop Assistant</div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-primary-foreground h-8 w-8 p-0"
+              onClick={toggleChat}
             >
-              <X size={18} />
+              <X className="h-4 w-4" />
             </Button>
           </div>
-          
-          <div className="h-80 overflow-y-auto p-4 bg-gray-50" id="chatMessages">
-            {messages.map((msg, index) => (
-              <div key={index} className={`flex mb-4 ${msg.isUser ? 'justify-end' : ''}`}>
-                <div className={`rounded-lg py-2 px-4 max-w-[75%] ${
-                  msg.isUser 
-                    ? 'bg-accent text-white' 
-                    : 'bg-primary/10 text-primary'
-                }`}>
-                  <p>{msg.text}</p>
-                  {msg.isStreaming && (
-                    <span className="inline-block ml-1 animate-pulse">▌</span>
-                  )}
-                  <span className={`text-xs ${
-                    msg.isUser ? 'text-white/80' : 'text-gray-500'
-                  } mt-1 block`}>
-                    {formatTime(msg.timestamp)}
-                  </span>
+
+          {/* Chat messages */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={`flex ${
+                  message.type === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={`max-w-[85%] ${
+                    message.type === "user" ? "order-1" : "order-2"
+                  }`}
+                >
+                  <div
+                    className={`px-3 py-2 rounded-lg ${
+                      message.type === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted"
+                    }`}
+                  >
+                    {message.type === "ai" && message.agentType && (
+                      <div className="flex items-center text-xs text-muted-foreground mb-1">
+                        {getAgentIcon(message.agentType)}
+                        {message.agentType === "product_recommendation" &&
+                          "Product Assistant"}
+                        {message.agentType === "order_tracking" &&
+                          "Order Assistant"}
+                        {message.agentType === "customer_support" &&
+                          "Support Assistant"}
+                        {![
+                          "product_recommendation",
+                          "order_tracking",
+                          "customer_support",
+                        ].includes(message.agentType) && "Shop Assistant"}
+                      </div>
+                    )}
+                    <div className="text-sm">{message.content}</div>
+
+                    {/* Product recommendations */}
+                    {message.products && message.products.length > 0 && (
+                      <div className="mt-2 grid gap-2">
+                        {message.products.map((product) => (
+                          <div
+                            key={product.id}
+                            className="bg-background p-2 rounded shadow-sm text-xs cursor-pointer hover:bg-accent transition-colors"
+                            onClick={() =>
+                              handleProductClick(
+                                product.id,
+                                product.name.toLowerCase().replace(/\s+/g, "-")
+                              )
+                            }
+                          >
+                            <div className="font-medium">{product.name}</div>
+                            <div className="flex justify-between mt-1">
+                              <span>${product.price.toFixed(2)}</span>
+                              <span className="text-muted-foreground">
+                                {product.category}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Order information - Redesigned */}
+                    {message.orders && message.orders.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs font-medium mb-1 text-muted-foreground">Your Orders:</div>
+                        {message.orders.map((order) => (
+                          <div
+                            key={order.order_id}
+                            className="bg-background rounded-lg shadow-sm text-xs cursor-pointer hover:bg-accent/50 transition-colors border border-gray-100"
+                            onClick={() => handleOrderClick(order.order_id)}
+                          >
+                            <div className="flex items-center justify-between p-2 border-b border-gray-100">
+                              <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-primary" />
+                                <span className="font-medium">Order #{order.order_id}</span>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-xs ${getStatusColor(order.status)}`}>
+                                {order.status}
+                              </span>
+                            </div>
+                            <div className="p-2">
+                              <div className="grid grid-cols-2 gap-1">
+                                <span className="text-muted-foreground">Date:</span>
+                                <span className="font-medium text-right">{order.date}</span>
+                                <span className="text-muted-foreground">Total:</span>
+                                <span className="font-medium text-right">${parseFloat(order.total).toFixed(2)}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-center p-1 bg-primary/10 text-primary text-xs">
+                              <span>View Details</span>
+                              <ChevronRight className="h-3 w-3 ml-1" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Suggested actions */}
+                    {message.suggestedActions &&
+                      message.suggestedActions.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {message.suggestedActions.map((action, i) => (
+                            <button
+                              key={i}
+                              className="bg-background text-primary text-xs rounded-full px-2 py-1 hover:bg-accent transition-colors"
+                              onClick={() => handleActionClick(action)}
+                            >
+                              {action}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                  <div
+                    className={`text-xs mt-1 text-muted-foreground ${
+                      message.type === "user" ? "text-right" : "text-left"
+                    }`}
+                  >
+                    {formatTime(message.timestamp)}
+                  </div>
                 </div>
               </div>
             ))}
-            {isLoading && !messages[messages.length - 1]?.isStreaming && (
-              <div className="flex mb-4">
-                <div className="bg-primary/10 text-primary rounded-lg py-2 px-4 max-w-[75%]">
-                  <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-muted px-3 py-2 rounded-lg">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce"></div>
+                    <div
+                      className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce"
+                      style={{ animationDelay: "0.2s" }}
+                    ></div>
+                    <div
+                      className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce"
+                      style={{ animationDelay: "0.4s" }}
+                    ></div>
                   </div>
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
-          
-          <div className="p-4 border-t">
-            <form onSubmit={handleSendMessage} className="flex">
-              <Input
+
+          {/* Chat input */}
+          <form onSubmit={handleSendMessage} className="border-t p-3">
+            <div className="flex items-center gap-2">
+              <input
+                ref={inputRef}
                 type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
                 placeholder="Type your message..."
-                className="flex-grow border border-gray-300 rounded-l-full py-2 px-4 focus:outline-none focus:border-accent"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                disabled={isLoading}
+                className="flex-1 px-3 py-2 bg-muted rounded-md text-sm"
+                disabled={loading}
               />
-              <Button 
+              <Button
                 type="submit"
-                className="bg-accent hover:bg-accent/90 text-white px-4 rounded-r-full focus:outline-none transition-all"
-                disabled={isLoading}
+                size="sm"
+                className="h-9 w-9 p-0"
+                disabled={loading || !input.trim()}
               >
-                <Send size={18} />
+                <Send className="h-4 w-4" />
               </Button>
-            </form>
-          </div>
-        </div>
+            </div>
+          </form>
+        </Card>
       )}
-    </div>
+    </>
   );
-}
+};
+
+export default ChatWidget;

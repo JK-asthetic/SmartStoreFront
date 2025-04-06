@@ -13,10 +13,10 @@ export default function Home() {
       <HeroSection />
       <FeaturesSection />
       <CategoriesSection />
-      <NewArrivalsSection />
-      <TrendingSection />
-      <SaleBannerSection />
+      {/* <NewArrivalsSection /> */}
       <RecommendedSection />
+      <SaleBannerSection />
+      <TrendingSection />
       <NewsletterSection />
     </div>
   );

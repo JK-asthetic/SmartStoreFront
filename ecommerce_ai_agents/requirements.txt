@@ -1,0 +1,104 @@
+
+# Create requirements.txt
+# cat > ecommerce_ai_agents/requirements.txt << 'EOF'
+Flask==2.3.3
+Flask-Cors==4.0.0
+ollama==0.1.6
+python-dotenv==1.0.0
+gunicorn==21.2.0
+Werkzeug==2.3.7
+# EOF
+
+# # Create README.md
+# cat > ecommerce_ai_agents/README.md << 'EOF'
+# # E-commerce AI Agent Service
+
+# A Flask-based backend service that provides multiple AI agents for an e-commerce website. The agents are powered by Ollama's gamma:2b model.
+
+# ## Features
+
+# - Intent recognition agent
+# - Product recommendation agent
+# - Order tracking agent
+# - Customer support agent
+# - RESTful API for easy integration with Next.js frontend
+
+# ## Setup
+
+# 1. Install dependencies:
+#    ```
+#    pip install -r requirements.txt
+#    ```
+
+# 2. Make sure Ollama is installed and running on your system:
+#    ```
+#    ollama pull gamma:2b
+#    ```
+
+# 3. Run the application:
+#    ```
+#    python app.py
+#    ```
+
+# ## API Endpoints
+
+# - `/api/chat` - Main endpoint for chat interactions
+# - `/api/products` - Get product catalog
+# - `/api/orders/<user_id>` - Get orders for a specific user
+
+# ## Integration with Next.js
+
+# This backend is designed to work with a Next.js frontend. The API endpoints return JSON data that can be easily consumed by a React application.
+
+# ## Example Flow
+
+# 1. User sends a message via the Next.js frontend
+# 2. The intent recognition agent classifies the intent
+# 3. The appropriate specialized agent handles the request
+# 4. The response is sent back to the frontend for display
+# EOF
+
+# # Create a simple docker-compose.yml
+# cat > ecommerce_ai_agents/docker-compose.yml << 'EOF'
+# version: '3'
+
+# services:
+#   ollama:
+#     image: ollama/ollama:latest
+#     ports:
+#       - "11434:11434"
+#     volumes:
+#       - ollama_data:/root/.ollama
+#     command: >
+#       sh -c "ollama pull gamma:2b && ollama serve"
+
+#   flask_app:
+#     build: .
+#     ports:
+#       - "5000:5000"
+#     volumes:
+#       - .:/app
+#     depends_on:
+#       - ollama
+#     environment:
+#       - OLLAMA_HOST=http://ollama:11434
+
+# volumes:
+#   ollama_data:
+# EOF
+
+# # Create Dockerfile
+# cat > ecommerce_ai_agents/Dockerfile << 'EOF'
+# FROM python:3.10-slim
+
+# WORKDIR /app
+
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# COPY . .
+
+# EXPOSE 5000
+
+# CMD ["python", "app.py"]
+# EOF
